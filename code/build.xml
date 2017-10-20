@@ -1,0 +1,304 @@
+<?xml version="1.0"?>
+
+<project default="package" basedir=".">
+
+	<!-- =================================================================== -->
+	<!-- Initialization target                                               -->
+	<!-- =================================================================== -->
+	<target name="init">
+		<tstamp/>
+		<property name="Name" value="jco-datalogger"/>
+		<property name="name" value="jco-dl"/>
+		<property name="version" value="1v1"/>
+		<property name="year" value="2016-2017"/>
+
+		<echo message="-------------- ${Name} ${version} [${year}] ----------------"/>
+
+		<property name="build.compiler" value="modern"/>
+		<property name="debug" value="true"/>
+		<property name="optimize" value="on"/>
+		<property name="deprecation" value="off"/>
+
+		<property name="src.dir" value="./src"/>
+		<property name="docs.dir" value="./docs"/>
+		<property name="lib.dir" value="${src.dir}/lib"/>
+		<property name="packages"
+		value="Main.*,DataRecording.*,DataFormatting.*"/>
+
+		<property name="doc.generator" value="org.apache.stylebook.StyleBook"/>
+		<property name="doc.generator.package" value="${lib.dir}/stylebook-1.0-b2.jar"/>
+
+		<property name="build.dir" value="./build"/>
+		<property name="build.src" value="./build/src"/>
+		<property name="build.dest" value="./build/classes"/>
+		<property name="build.docs" value="./build/docs"/>
+		<property name="build.javadocs" value="./build/javadocs"/>
+	
+		
+		<property name="svn.dest" value="${src.dir}"/>
+		<property name="dist.dir" value="./dist"/>
+
+		<property name="replacestring" value="org/apache/net"/>
+		<property name="ignore_this" value="ignore_this.java"/>
+
+		<property name="ignore_jdk11"
+			value="org/apache/fop/render/awt/**
+                     ,org/apache/fop/viewer/**
+                     ,**/GifJpegImage.java
+                     ,**/JimiImage.java
+                     ,**/PrintCommandLine.java
+                     ,**/AWTCommandLine.java"/>
+
+		<property name="xslt" value="org.apache.xalan.xslt.Process"/>
+
+		<available property="xt.present" classname="com.jclark.xsl.sax.XSLProcessor"/>
+		<available property="ibm.present"
+			classname="com.ibm.xml.parser.TXDocument"/>
+		<available property="sun.present"
+			classname="com.sun.xml.parser.TXDocument"/>
+
+		<filter token="${replacestring}" value="${build.src}/${replacestring}"/>
+		
+		<path id="build.classpath">
+			<fileset dir="${lib.dir}">
+				<include name="**/*.jar"/>	
+			</fileset>
+		</path>
+	</target>
+
+
+	<!-- =================================================================== -->
+	<!-- Help on usage                                                       -->
+	<!-- =================================================================== -->
+	<target name="usage">
+		<echo message=""/>
+		<echo message=""/>
+		<echo message="${Name} Build file"/>
+		<echo message="-------------------------------------------------------------"/>
+		<echo message=""/>
+		<echo message=" available targets are:"/>
+		<echo message=""/>
+		<echo message="   package   --> generates the ${name}.jar file (default)"/>
+		<echo message="   compile   --> compiles the source code"/>
+		<echo message="   docs      --> generates the HTML documentation"/>
+		<echo message="   javadocs  --> generates the API documentation (java 1.2 only)"/>
+		<echo message="   dist      --> generates the ${Name} distribution as .tar.gz and .zip"/>
+		<echo message="   clean     --> cleans up the directory (except for the dist files)"/>
+		<echo message="   distclean --> cleans up the directory"/>
+		<echo message="   site      --> generates the ${Name} web site (not yet implemented)"/>
+		<echo message=""/>
+		<echo message=" See the comments inside the build.xml file for more details."/>
+		<echo message="-------------------------------------------------------------"/>
+		<echo message=""/>
+		<echo message=""/>
+	</target>
+
+	<!-- =================================================================== -->
+	<!-- Prepares the build directory                                        -->
+	<!-- =================================================================== -->
+	<target name="prepare" depends="init">
+		<!-- create directories -->
+		<echo message="Preparing the build directories"/>
+		<mkdir dir="${build.dir}"/>
+		<mkdir dir="${build.src}"/>
+<!--		<mkdir dir="${build.dest}/conf"/>
+		<copydir src="./conf" dest="${build.dest}/conf" />
+-->	</target>
+
+
+	<!-- =================================================================== -->
+	<!-- copies some source files if xt is present                           -->
+	<!-- =================================================================== -->
+	<target name="prepare-xt" depends="prepare" if="xt.present">
+		<copy  todir="${build.src}">
+		 	<fileset dir="${src.dir}">
+				<include name="**/XT*,**/PDFOutputHandler.java"/>
+			</fileset>
+		</copy>
+			
+	</target>
+
+
+	<!-- =================================================================== -->
+	<!-- copies some source files if ibm is present                           -->
+	<!-- =================================================================== -->
+	<target name="prepare-xml4j" depends="prepare" if="xml4j.present">
+		<copy todir="${build.src}">
+			<fileset dir="${src.dir}">
+				<include name="**/ibm*,**/IbmBridge.java"/>
+			</fileset>
+		</copy>
+	</target>
+
+	<!-- =================================================================== -->
+	<!-- copies some source files if sun is present                           -->
+	<!-- =================================================================== -->
+	<target name="prepare-sun" depends="prepare" if="sun.present">
+		<copy todir="${build.src}">
+			<fileset dir="${src.dir}">
+				<include name="**/sun*,**/SunBridge.java"/>
+			</fileset>
+		</copy>
+	</target>
+
+
+	<!-- =================================================================== -->
+	<!-- Prepares the source code                                            -->
+	<!-- =================================================================== -->
+	<target name="prepare-src" depends="prepare, prepare-xml4j,
+			prepare-sun">
+		<!-- copy src files -->
+		<copy   todir="${build.src}">
+		 	<fileset dir="${src.dir}">
+				<exclude name="**/Makefile*,**/package.html,**/ibm*,**/IbmBridge.java,**/sun*,**/SunBridge.java"/>
+			</fileset>
+		</copy>
+	</target>
+
+
+	<!-- =================================================================== -->
+	<!-- Compiles the source directory                                       -->
+	<!-- =================================================================== -->
+	<target name="compile" depends="prepare-src">
+		<echo message="Compiling the sources "/>
+		<!-- create directories -->
+		<mkdir dir="${build.dest}"/>
+		
+		<javac srcdir="${build.src}" destdir="${build.dest}"
+			debug="${debug}"
+			deprecation="${deprecation}" optimize="${optimize}" excludes="**/*${ignore_this},${jimi}">
+			<compilerarg value="-Xlint:unchecked"/>
+			<classpath refid="build.classpath"/>
+		</javac>
+	</target>
+
+	<target name="compile-jdk11" depends=" prepare-src">
+		<echo message="Compiling the sources for JDK1.1"/>
+		<!-- create directories -->
+		<mkdir dir="${build.dest}"/>
+
+		<javac srcdir="${build.src}" destdir="${build.dest}" debug="${debug}" deprecation="${deprecation}"
+			optimize="${optimize}" excludes="**/${ignore_this},${jimi},${ignore_jdk11}"/>
+	</target>
+
+	<!-- =================================================================== -->
+	<!-- Creates the class package                                           -->
+	<!-- =================================================================== -->
+	<target name="package" depends="compile">
+		<echo message="Creating the jar file ${build.dir}/${name}.jar"/>
+                <tstamp>
+                	<format property="timestamp" pattern="yyyy-MM-dd"/>
+                </tstamp>
+                
+                <exec executable="/usr/bin/svnversion"
+                failifexecutionfails="no" dir="${svn.dest}"
+                outputproperty="svn.revision">
+			<arg value="-n"/>
+		</exec>
+		
+		<jar jarfile="${build.dir}/${name}-${version}.jar"
+		basedir="${build.dest}">
+			<fileset dir="${build.dest}"
+			includes="org/**,com/**,hyph/**,**/*.class"/>
+			<fileset dir="${lib.dir}"
+			includes="helpscreen.txt"/>
+			<zipgroupfileset dir="${lib.dir}"
+			includes="**/*.jar" />
+			<manifest>
+				<attribute name="Main-Class"
+					value="Main.DataLogger"/>
+				<attribute name="Class-Path"
+					value="${lib.dir}/args4f-2.33.jar
+					${lib.dir}/joda-time-2.9.9.jar
+					${lib.dir}/helpscreen.txt"/>
+				<attribute name="Canopen-Revision"
+					value="${svn.revision}"/>
+				<attribute name="Build-Date"
+					value="${timestamp}"/>
+				<attribute name="Version"
+					value="${version}"/>	 
+			</manifest>
+		</jar>
+	</target>
+
+	<target name="package-jdk11" depends="compile-jdk11">
+		<echo message="Creating the jar file ${build.dir}/${name}11.jar"/>
+		<jar jarfile="${build.dir}/${name}-jdk11.jar" basedir="${build.dest}"
+			includes="org/**,conf/**,hyph/**"/>
+	</target>
+
+	<!-- =================================================================== -->
+	<!-- Prepares the docs                                                   -->
+	<!-- =================================================================== -->
+	<target name="prepare-docs" depends="init">
+		<mkdir dir="${build.docs}"/>
+		<!-- sets exec permission for antRun on Unix systems. necessary for javadoc-->
+<!--		<chmod src="${lib.dir}/bin/antRun" perm="ugo+rx" /> -->
+	</target>
+
+	<!-- =================================================================== -->
+	<!-- Copying the documentation files                                     -->
+	<!-- =================================================================== -->
+	<target name="docs" depends="prepare-docs">
+		<echo message="Copying doc files "/>
+		<copydir src="${docs.dir}" dest="${build.docs}" />
+		<copydir src="${lib.dir}" dest="${build.dir}/${lib.dir}" />
+		<copyfile src="build.xml" dest="${build.dir}/build.xml" /> 
+		<copyfile src="${basedir}/README" dest="${build.dir}/README" />
+		<copyfile src="${basedir}/STATUS" dest="${build.dir}/STATUS" />
+		<copyfile src="${basedir}/LICENSE" dest="${build.dir}/LICENSE" />
+		<copyfile src="${basedir}/FAQ" dest="${build.dir}/FAQ" />
+	</target>
+
+	<!-- =================================================================== -->
+	<!-- Creates the API documentation                                       -->
+	<!-- =================================================================== -->
+	<target name="javadocs" depends="prepare-src">
+		<echo message="Producing the javadoc files "/>
+		<mkdir dir="${build.javadocs}"/>
+		<javadoc packagenames="${packages}" 
+			sourcepath="${build.src}"
+			classpathref="build.classpath"
+			destdir="${build.javadocs}" 
+			author="true" 
+			version="true"
+			windowtitle="${Name} API" 
+			doctitle="${Name}"
+			bottom="Copyright &#169; ${year} Apache Software Foundation. All Rights Reserved."
+		/>
+	</target>
+
+	<!-- =================================================================== -->
+	<!-- Creates the distribution                                            -->
+	<!-- =================================================================== -->
+	<target name="dist" depends="package, docs, javadocs">
+		<echo message="Building the distribution files (zip,tar)"/>
+		<mkdir dir="${dist.dir}"/>
+		<copyfile src="${basedir}/build.sh" dest="${dist.dir}/build.sh" />
+<!--		<chmod src="${dist.dir}/build.sh" perm="ugo+rx" /> -->
+		<copyfile src="${basedir}/build.bat" dest="${dist.dir}/build.bat" />
+		<copydir src="${build.dir}" dest="${dist.dir}" 
+			 excludes="**/classes/**, **/${ignore_this}"/>
+		<zip zipfile="${Name}-${version}.zip" basedir="${dist.dir}" includes="**"/>
+		<tar tarfile="${Name}-${version}.tar" basedir="${dist.dir}" includes="**"/>
+		<gzip zipfile="${Name}-${version}.tar.gz" src="${Name}-${version}.tar" />
+		<delete file="${Name}-${version}.tar"/>
+	</target>
+
+	<!-- =================================================================== -->
+	<!-- Clean targets                                                       -->
+	<!-- =================================================================== -->
+	<target name="clean" depends="init">
+		<deltree dir="${build.dir}"/>
+	</target>
+
+	<target name="distclean" depends="clean">
+		<deltree dir="${dist.dir}"/>
+		<delete file="${Name}-${version}.tar.gz"/>
+		<delete file="${Name}-${version}.tar"/>
+		<delete file="${Name}-${version}.zip"/>
+	</target>
+
+</project>
+
+<!-- End of file -->
