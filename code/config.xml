@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<config>
+	<can_driver>
+		<type>datagram</type>
+		<address>localhost
+		
+		</address>
+		<port>
+		
+		2000</port>
+	</can_driver>
+	<canopen_address>0x23</canopen_address>
+	<channels>
+		<node>
+			<od_index>0x6210</od_index>
+			<cobid>0x281</cobid>
+			<num_samples>3</num_samples>
+			<bits_sample>16</bits_sample>
+		</node>			
+		<node>
+			<od_index>0x6211</od_index>
+			<cobid>0x282</cobid>
+			<num_samples>3</num_samples>
+			<bits_sample>20</bits_sample>
+		</node>			
+		<node>
+			<od_index>0x6212</od_index>
+			<cobid>0x283</cobid>
+			<num_samples>3</num_samples>
+			<bits_sample>16</bits_sample>
+		</node>			
+		<node>
+			<od_index>0x6213</od_index>
+			<cobid>0x284</cobid>
+			<num_samples>3</num_samples>
+			<bits_sample>16</bits_sample>
+		</node>			
+	</channels>
+</config>

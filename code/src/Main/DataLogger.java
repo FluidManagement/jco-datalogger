@@ -33,6 +33,7 @@ import java.nio.file.DirectoryNotEmptyException;
 import java.util.Set;	// for Set
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.ArrayList;
  
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -50,17 +51,30 @@ import org.kohsuke.args4j.Option;
 import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
+
+// for parasing an xml config file
+import javax.xml.parsers.SAXParserFactory;
+import javax.xml.parsers.SAXParser;
+import javax.xml.parsers.ParserConfigurationException;
+import org.xml.sax.SAXException;
+import java.io.File;
+
+import org.xml.sax.Attributes;
+import org.xml.sax.SAXException;
+import org.xml.sax.helpers.DefaultHandler;
+
+
+
+
+
 /**
  * Created by gcdc on 6/7/17.
  */
 public class DataLogger {
-    private CanOpen co;
-    private DriverManager dm;
-    private Driver drvr;
-    private ObjectDictionary od;
-    private NodeTracker[] nodes;
-    private int odIndexes[] = new int[]{0x6210, 0x6211, 0x6212, 0x6213};
+    private CanOpen canOpen;
     private int rxpdoIndexes[] = new int[]{0x10, 0x11, 0x12, 0x13};
+	private ArrayList<NodeTracker> nodes;
+
     private DataFormatter dfmt;
     private FileHandler fileHandler;
     private SyncListener sl;
@@ -99,29 +113,37 @@ public class DataLogger {
     
     @Option(name="-f",aliases={"--file-limit"},usage = "Set the maximum number of data files to be created")
     private Integer fileLimit = null;
+
+    @Option(name="-x",aliases={"--xml-config"},usage = "Provide a filename to parse an xmlfile of Object Dictionary entries ")
+    private String xmlFileName = null;
     
     @Option(name="-help",help=true,usage="Bring up the extended help screen")
     private Boolean help = false;
     
     
-    private class SyncListener implements CanOpenListener{
+    private class SyncListener implements CanOpenListener
+    {
         boolean objectDictReady = false;
         
         //Adds Self to the Canopen instance's list of sync listeners
-        public void startSyncListener(){
-            if(!recordingStatus){
-                co.addSyncListener(this);
+        public void startSyncListener()
+        {
+            if(!recordingStatus)
+            {
+                canOpen.addSyncListener(this);
                 recordingStatus = true;
                 startInstant = DateTime.now();
-                if(runTime != null){
+                if(runTime != null)
+                {
                     shutdownTimer.schedule(new ShutdownTimer(), runTime.longValue());    
                 }
             }
         }
         
         //Removes self from the Canopen instance's list of sync listeners
-        public void stopSyncListener(){
-            co.removeSyncListener(this);
+        public void stopSyncListener()
+        {
+            canOpen.removeSyncListener(this);
             fileHandler.close();
             GlobalVars.START_TIME = null;
             recordingStatus = false;
@@ -135,7 +157,8 @@ public class DataLogger {
          * @param canMessage - The Sync message, supplied by CanOpen. Currently unused
          */
         @Override
-        public void onMessage(CanMessage canMessage) {
+        public void onMessage(CanMessage canMessage)
+        {
 //	        debugPrint("SYNC message received");
                 if(objectDictReady){
                     if (GlobalVars.START_TIME == null) {
@@ -144,9 +167,9 @@ public class DataLogger {
                         fileHandler.printLine(dfmt.produceHeader(rxpdoIndexes));
                         debugPrint(dfmt.produceHeader(rxpdoIndexes));
                     } else {
-                        AccelerometerReading readings[] = new AccelerometerReading[nodes.length];
-                        for(int i = 0; i < nodes.length; i++ ){
-                            readings[i] = nodes[i].getLatestReading();
+                        AccelerometerReading readings[] = new AccelerometerReading[nodes.size()];
+                        for(int i = 0; i < nodes.size(); i++ ){
+                            readings[i] = nodes.get(i).getLatestReading();
                         }
     //		        debugPrint(dfmt.producePrettyOutputString(readings));
                         if((fileHandler.currentSampleSize <  fileLength)||infiniteDataFile)
@@ -172,7 +195,7 @@ public class DataLogger {
             objectDictReady = true;
         }
         @Override
-        public void onEvent(CanOpen co, int state) {}
+        public void onEvent(CanOpen canOpen, int state) {}
     }
     
     private class FileHandler{
@@ -546,68 +569,314 @@ public class DataLogger {
         }
     }
     
-    
-    //Does most of the CanOpen setup stuff
-    private class CanOpenThread implements Runnable{
-        //Sets up CanOpen stuff
-        //Creates the NodeTrackers and SyncListener      
-        @Override
-        public void run(){
-            
-            boolean restart = false;
-            try{
-               do{
-                    debugPrint("CANbus driver starting");
-                    dm = new DriverManager("datagram", address, 2000, false);
-                    drvr = dm.getDriver();
-                    debugPrint("CANbus driver configured");
-                    od = DefaultOD.create(0x23);
-                    co = new CanOpen(drvr, od, 0x23, GlobalVars.DEBUG);
-                    
-                    nodes = new NodeTracker[4];
-                    nodes[0] = new NodeTracker(co, 0x281, rxpdoIndexes[0], odIndexes[0], 0x3, 0x10, 0,1,2);
-                    nodes[1] = new NodeTracker(co, 0x282, rxpdoIndexes[1], odIndexes[1], 0x3, 0x10, 0,1,2);
-                    nodes[2] = new NodeTracker(co, 0x283, rxpdoIndexes[2], odIndexes[2], 0x3, 0x10, 0,1,2);
-                    nodes[3] = new NodeTracker(co, 0x284, rxpdoIndexes[3], odIndexes[3], 0x3, 0x10, 0,1,2);
-                    sl = new SyncListener();
-                    od.getEntry(odIndexes[0]).getSub(0).addListener(sl);
-                    od.getEntry(odIndexes[1]).getSub(0).addListener(sl);
-                    od.getEntry(odIndexes[2]).getSub(0).addListener(sl);
-                    od.getEntry(odIndexes[3]).getSub(0).addListener(sl);
-                    
-                    debugPrint("CanOpen configured");
-                    debugPrint("CanOpen Starting");
-                    
-                    co.start();
-                    if(startImmediately){
-                        sl.startSyncListener();
-                    }    
-                    co.join();               
-                    debugPrint("CanOpenThread.run(): co.start() is finished");
-                }while(restart);
-            }catch(InterruptedException ie){
-                dm.unloadDriver();
-                co.toRebootState();        
-                coThread.interrupt();
-                coThread = null;
-                dm.unloadDriver();
-                drvr = null; 
-                dm = null;
-                System.gc();
-                co.toRebootState();
-                co = null;
-                od = null;
-                GlobalVars.START_TIME = null;
-                for(NodeTracker node : nodes){
-                    node = null;
-                }
-                fileHandler = null;
-                System.gc();
-            }catch(COException coe){
-                coe.printStackTrace();
-            }
-        }
-    }
+	private class CoXmlHandler extends DefaultHandler
+	{
+		CanOpenThread cot;
+		boolean bDriver = false;
+		boolean bType = false;
+		boolean bAddress = false;
+		boolean bPort = false;
+		boolean bCanAddr = false;
+		boolean bChannels = false;
+		boolean bNode = false;
+		boolean bOdIndex = false;
+		String type;
+		String ipAddress;
+		String port;
+		String canAddr;
+		String odIndex;
+		boolean bCobid = false;
+		String cobid;
+		boolean bNumSamples = false;
+		String numSamples;
+		boolean bBitsSample = false;
+		String bitsSample;
+		
+		CoXmlHandler(CanOpenThread cot)
+		{
+			this.cot = cot;
+		}
+		
+		@Override
+		public void startElement(String uri, String localName, String qName, Attributes attributes) throws SAXException 
+		{
+//debugPrint("qName "+qName);	
+			if(qName.equalsIgnoreCase("can_driver")) {
+				bDriver = true;
+			}
+			else if(qName.equalsIgnoreCase("canopen_address")) {
+				bCanAddr = true;
+			}
+			else if(qName.equalsIgnoreCase("channels")) {
+				bChannels = true;
+			}
+			else if(bDriver)
+			{
+				if(qName.equalsIgnoreCase("type")) {
+					bType = true;
+				}
+				else if(qName.equalsIgnoreCase("address")) {
+					bAddress = true;
+				}
+				else if(qName.equalsIgnoreCase("port")) {
+					bPort = true;
+				}
+			}
+			else if(bChannels)
+			{
+				if(bNode)
+				{
+//debugPrint("in new node");
+					if(qName.equalsIgnoreCase("od_index")) {
+						bOdIndex = true;
+					}
+					else if(qName.equalsIgnoreCase("cobid")) {
+						bCobid = true;
+					}
+					else if(qName.equalsIgnoreCase("num_samples")) {
+						bNumSamples = true;
+					}
+					else if(qName.equalsIgnoreCase("bits_sample")) {
+						bBitsSample = true;
+					}
+				}	
+				else if(qName.equalsIgnoreCase("node")) {
+					bNode = true;
+				}
+			}
+				    
+		}
+		
+		@Override
+		public void endElement(String uri, String localName, String qName) throws SAXException
+		{
+			if (qName.equalsIgnoreCase("can_driver"))
+			{
+				bDriver = false;
+				debugPrint("type: ("+type+")  addr: ("+ipAddress+") port: ("+port+")");
+				int p = Integer.decode(port);
+				cot.dm = new DriverManager(type, ipAddress, p, false);
+				cot.drvr = cot.dm.getDriver();
+				debugPrint("CANbus driver configured");
+
+			}
+			else if(qName.equalsIgnoreCase("canopen_address")) {
+				bCanAddr = false;
+				int iAddr = Integer.decode(canAddr);
+				debugPrint("canopen addr: ("+canAddr+")"+"  val:"+iAddr);
+				cot.od = DefaultOD.create(iAddr);
+				canOpen = new CanOpen(cot.drvr, cot.od, iAddr, GlobalVars.DEBUG);
+
+			}
+			else if(qName.equalsIgnoreCase("channels")) {
+				bChannels = false;
+			}
+			else if(bDriver)
+			{
+				if(qName.equalsIgnoreCase("type")) {
+					bType = false;
+				}
+				else if(qName.equalsIgnoreCase("address")) {
+					bAddress = false;
+				}
+				else if(qName.equalsIgnoreCase("port")) {
+					bPort = false;
+				}
+			}
+			else if(bChannels)
+			{
+				if(bNode)
+				{
+
+					if(qName.equalsIgnoreCase("od_index")) {
+						bOdIndex = false;
+					}
+					else if(qName.equalsIgnoreCase("cobid")) {
+						bCobid = false;
+					}
+					else if(qName.equalsIgnoreCase("num_samples")) {
+						bNumSamples = false;
+					}
+					else if(qName.equalsIgnoreCase("bits_sample")) {
+						bBitsSample = false;
+					}
+					else if(qName.equalsIgnoreCase("node")) {
+						bNode = false;	
+						debugPrint("node parameters odIndex:("+odIndex+ ") cobid:("+cobid+ ") numSamples:("+ numSamples +") bits per sample:("+ bitsSample+")");
+					}
+				}
+				else if(qName.equalsIgnoreCase("channels")) {
+					bChannels = false;	
+				}
+			}
+		}    		                                               
+		
+		@Override
+		public void characters(char ch[], int start, int length) throws SAXException
+		{
+			String temp = new String(ch, start, length).trim();
+			if(temp.length() == 0)
+				return;
+//debugPrint("char: ("+temp+")");
+				
+			if(bType)
+				type = temp;
+			else if(bAddress)
+				ipAddress = temp;
+			else if(bPort)
+				port = temp;
+			else if(bCanAddr)
+				canAddr = temp;	
+			else if(bOdIndex)
+				odIndex = temp;	
+			else if(bCobid)
+				cobid = temp;	
+			else if(bNumSamples)
+				numSamples = temp;	
+			else if(bBitsSample)
+				bitsSample = temp;	
+		}
+	}	
+    	
+    			
+    	//Does most of the CanOpen setup stuff
+	private class CanOpenThread implements Runnable
+	{
+		private DriverManager dm;
+		private Driver drvr;
+		private ObjectDictionary od;
+		private int odIndexes[] = new int[]{0x6210, 0x6211, 0x6212, 0x6213};
+		
+		CanOpenThread(String fname) throws Exception
+		{
+			try
+			{
+				debugPrint("CANbus driver starting");
+				SAXParserFactory saxParserFactory = SAXParserFactory.newInstance();
+				SAXParser saxParser = saxParserFactory.newSAXParser();
+				CoXmlHandler handler = new CoXmlHandler(this);
+				File fXmlFile = new File(fname);
+				saxParser.parse(fXmlFile, handler);
+
+												
+//				dm = new DriverManager("datagram", address, 2000, false);
+//				drvr = dm.getDriver();
+//				debugPrint("CANbus driver configured");
+//				od = DefaultOD.create(0x23);
+//				canOpen = new CanOpen(drvr, od, 0x23, GlobalVars.DEBUG);
+
+				nodes = new ArrayList<>();//NodeTracker[4];
+				nodes.add( new NodeTracker(canOpen, 0x281, rxpdoIndexes[0], odIndexes[0], 0x3, 0x10, 0,1,2));
+				nodes.add( new NodeTracker(canOpen, 0x282, rxpdoIndexes[1], odIndexes[1], 0x3, 0x10, 0,1,2));
+				nodes.add( new NodeTracker(canOpen, 0x283, rxpdoIndexes[2], odIndexes[2], 0x3, 0x10, 0,1,2));
+				nodes.add( new NodeTracker(canOpen, 0x284, rxpdoIndexes[3], odIndexes[3], 0x3, 0x10, 0,1,2));
+
+				sl = new SyncListener();
+				od.getEntry(odIndexes[0]).getSub(0).addListener(sl);
+				od.getEntry(odIndexes[1]).getSub(0).addListener(sl);
+				od.getEntry(odIndexes[2]).getSub(0).addListener(sl);
+				od.getEntry(odIndexes[3]).getSub(0).addListener(sl);
+
+				debugPrint("CanOpen configured");
+			}	
+			catch(COException coe)
+			{
+				coe.printStackTrace();
+				throw(new Exception("outta here"));
+			}
+			catch(ParserConfigurationException pce)
+			{
+				pce.printStackTrace();
+				throw(new Exception("outta here"));
+			}
+			catch(SAXException se)
+			{
+				se.printStackTrace();
+				throw(new Exception("outta here"));
+			}
+			catch(IOException ioe)
+			{
+				ioe.printStackTrace();
+				throw(new Exception("outta here"));
+			}
+		}
+
+		CanOpenThread()
+		{
+			try
+			{	
+				debugPrint("CANbus driver starting");
+				dm = new DriverManager("datagram", address, 2000, false);
+				drvr = dm.getDriver();
+				debugPrint("CANbus driver configured");
+				od = DefaultOD.create(0x23);
+				canOpen = new CanOpen(drvr, od, 0x23, GlobalVars.DEBUG);
+
+				nodes = new ArrayList<>();
+				nodes.add( new NodeTracker(canOpen, 0x281, rxpdoIndexes[0], odIndexes[0], 0x3, 0x10, 0,1,2));
+				nodes.add( new NodeTracker(canOpen, 0x282, rxpdoIndexes[1], odIndexes[1], 0x3, 0x10, 0,1,2));
+				nodes.add( new NodeTracker(canOpen, 0x283, rxpdoIndexes[2], odIndexes[2], 0x3, 0x10, 0,1,2));
+				nodes.add( new NodeTracker(canOpen, 0x284, rxpdoIndexes[3], odIndexes[3], 0x3, 0x10, 0,1,2));
+
+				sl = new SyncListener();
+				od.getEntry(odIndexes[0]).getSub(0).addListener(sl);
+				od.getEntry(odIndexes[1]).getSub(0).addListener(sl);
+				od.getEntry(odIndexes[2]).getSub(0).addListener(sl);
+				od.getEntry(odIndexes[3]).getSub(0).addListener(sl);
+
+				debugPrint("CanOpen configured");
+			}	
+			catch(COException coe)
+			{
+				coe.printStackTrace();
+			}
+		}
+
+		//Sets up CanOpen stuff
+		//Creates the NodeTrackers and SyncListener      
+		@Override
+		public void run()
+		{
+			boolean restart = false;
+			try
+			{
+				do
+				{
+					debugPrint("CanOpen Starting");
+					canOpen.start();
+					if(startImmediately)
+					{
+						sl.startSyncListener();
+					}    
+					canOpen.join();               
+					debugPrint("CanOpenThread.run(): canOpen.start() is finished");
+				}
+				while(restart);
+			}
+			catch(InterruptedException ie)
+			{
+				dm.unloadDriver();
+				canOpen.toRebootState();        
+				coThread.interrupt();
+				coThread = null;
+				dm.unloadDriver();
+				drvr = null; 
+				dm = null;
+				System.gc();
+				canOpen.toRebootState();
+				canOpen = null;
+				od = null;
+				GlobalVars.START_TIME = null;
+				nodes.clear();
+				fileHandler = null;
+				System.gc();
+			}
+	//		catch(COException coe)
+//			{
+//				coe.printStackTrace();
+//			}
+		}
+	} // end private class def
     
     private class ShutdownTimer extends TimerTask{
         
@@ -663,8 +932,15 @@ public class DataLogger {
             fileHandler = new FileHandler();
             
             recordingStatus = false;
-            
-            coThread = new Thread(new CanOpenThread());
+            try{
+            	coThread = new Thread(new CanOpenThread(xmlFileName));
+            }
+            catch( Exception e)
+            {
+            	debugPrint("Using default object dictionary entries");
+            	coThread = new Thread(new CanOpenThread());
+            }
+
             coThread.start();
 
             try{socketThread.join();}
