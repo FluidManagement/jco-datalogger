@@ -218,7 +218,7 @@ public class DataLogger
 	}
 
 	private class FileHandler
-{
+	{
 		private PrintWriter output;
 		private int currentSampleSize;
 		private String currentFileName;
@@ -288,91 +288,103 @@ public class DataLogger
 			}
 		}
 
-	//Closes file and makes comment at end of file
-	public void close(){
-	    makeEOFComment();
-	    if(output!=null){
-		output.close();
-	    }
-	    output = null;
-	}
-
-	//Prints a line of text to the current file
-	/*
-	 * @param line - Line to be printed
-	 */
-	public void printLine(String line){
-	    if(output == null)
-		createFile();
-
-	    output.println(line);
-	    output.flush();
-	}
-
-	//Wrapper for println that increments the currentSampleSize
-	/*
-	 * @param sample - Line to be printed;
-	 */
-	public void printSample(String sample){
-	    printLine(sample);
-	    currentSampleSize++;
-	}
-
-	//Generates the last line of the data file
-	//Simply contains info on the number of samples in the file
-	// and the average sample rate across the file
-	//Does not rely on currentSampleSize to be correct
-	//This could probably be changed to show more faith in the instance
-	// variables but its works fine like it is.
-	public void makeEOFComment(){
-	    Double firstSampleTime = new Double(0);
-	    Double lastSampleTime = new Double(0);
-	    int sampleNumber = 0;
-	    if(currentFileName != null){
-		try{
-		    LineNumberReader lnr = new LineNumberReader(new FileReader(new File(directory+"/"+currentFileName)));
-		    boolean flushedHeader = false;
-		    int headerCount = 0;
-		    while(!flushedHeader){
-			String firstSampleTimeString = lnr.readLine();
-			if(firstSampleTimeString.charAt(0) != (char)';'){
-			    firstSampleTime = Double.parseDouble(firstSampleTimeString.split(",")[0]);
-			    flushedHeader = true;
+		//Closes file and makes comment at end of file
+		public void close()
+		{
+			makeEOFComment();
+			if(output!=null)
+			{
+				output.close();
 			}
-			else{
-			    headerCount++;
-			}
-		    }
-
-		    String lastLine = new String();
-		    do{
-			String newLine = lnr.readLine();
-			if(newLine == null)
-			    break;
-			else
-			    lastLine = newLine;
-		    }while(lastLine != null);
-
-		    if(lastLine.startsWith(";"))
-			return;	//This means the comment was already generated
-
-		    lastSampleTime = Double.parseDouble(lastLine.split(",")[0]);
-		    lnr.skip(Long.MAX_VALUE);//go to the end of the file
-		    sampleNumber = lnr.getLineNumber()-headerCount;
-		    lnr.close();
-		}catch(IOException ioe){
-		    ioe.printStackTrace();
-		    return;
+			output = null;
 		}
 
-		double deltaTimeSeconds = (lastSampleTime - firstSampleTime);
-		double sampleRate = ((double)sampleNumber/deltaTimeSeconds);
-		printLine(String.format(";%d samples at %.3fHz", sampleNumber, sampleRate));
-	    }
+		//Prints a line of text to the current file
+		/*
+		 * @param line - Line to be printed
+		 */
+		public void printLine(String line)
+		{
+		    if(output == null)
+				createFile();
+		    output.println(line);
+		    output.flush();
+		}
+
+		//Wrapper for println that increments the currentSampleSize
+		/*
+		* @param sample - Line to be printed;
+		*/
+		public void printSample(String sample)
+		{
+			printLine(sample);
+			currentSampleSize++;
+		}
+
+
+		//Generates the last line of the data file
+		//Simply contains info on the number of samples in the file
+		// and the average sample rate across the file
+		//Does not rely on currentSampleSize to be correct
+		//This could probably be changed to show more faith in the instance
+		// variables but its works fine like it is.
+		public void makeEOFComment()
+		{
+			Double firstSampleTime = new Double(0);
+			Double lastSampleTime = new Double(0);
+			int sampleNumber = 0;
+			if(currentFileName != null)
+			{
+				try
+				{
+					LineNumberReader lnr = new LineNumberReader(new FileReader(new File(directory+"/"+currentFileName)));
+					boolean flushedHeader = false;
+					int headerCount = 0;
+					while(!flushedHeader)
+					{
+						String firstSampleTimeString = lnr.readLine();
+						if(firstSampleTimeString.charAt(0) != (char)';')
+						{
+							firstSampleTime = Double.parseDouble(firstSampleTimeString.split(",")[0]);
+							flushedHeader = true;
+						}
+						else
+						{
+							headerCount++;
+						}
+					}
+
+					String lastLine = new String();
+					do
+					{
+						String newLine = lnr.readLine();
+						if(newLine == null)
+							break;
+						else
+							lastLine = newLine;
+					}while(lastLine != null);
+
+					if(lastLine.startsWith(";"))
+						return;	//This means the comment was already generated
+
+					lastSampleTime = Double.parseDouble(lastLine.split(",")[0]);
+					lnr.skip(Long.MAX_VALUE);//go to the end of the file
+					sampleNumber = lnr.getLineNumber()-headerCount;
+					lnr.close();
+				}
+				catch(IOException ioe)
+				{
+					ioe.printStackTrace();
+					return;
+				}
+
+				double deltaTimeSeconds = (lastSampleTime - firstSampleTime);
+				double sampleRate = ((double)sampleNumber/deltaTimeSeconds);
+				printLine(String.format(";%d samples at %.3fHz", sampleNumber, sampleRate));
+			}
+		}
 	}
 
-
-    }
 
 	//This class listens for various commands generated by
 	// the cgi-bin scripts
