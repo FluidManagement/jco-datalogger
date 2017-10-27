@@ -119,24 +119,50 @@ public class DataFormatter {
         return filename;
     }
 
-    public String produceOutputLine(AccelerometerReading[] readings){
-        String output = new String("");
-        //NOTE:
-        //  The elapsed time value will be different for each reading
-        //  even though they were all gathered at the same Sync message.
-        //  The timestamp of the first reading will be used on the line
-        //  because that is assumed to be the most accurate. Luckily
-        //  the margin of error is only a few ten thousandths of a second
-        //  so it shouldn't cause any problems.
-        long nanoElapsed = readings[0].getElapsedTime();
-        double secondElapsed = (double)nanoElapsed/(double)1000000000; //10^9
-        
-        output = output.concat(String.format("%3f",secondElapsed));
-        for(AccelerometerReading reading : readings){
-            output = output.concat(","+Integer.toString(reading.getX()));
-            output = output.concat(","+Integer.toString(reading.getY()));
-            output = output.concat(","+Integer.toString(reading.getZ()));
-        }
-        return output;
-    }
+	public String produceOutputLine(AccelerometerReading[] readings)
+	{
+		String output = new String("");
+		//NOTE:
+		//  The elapsed time value will be different for each reading
+		//  even though they were all gathered at the same Sync message.
+		//  The timestamp of the first reading will be used on the line
+		//  because that is assumed to be the most accurate. Luckily
+		//  the margin of error is only a few ten thousandths of a second
+		//  so it shouldn't cause any problems.
+		long nanoElapsed = readings[0].getElapsedTime();
+		double secondElapsed = (double)nanoElapsed/(double)1000000000; //10^9
+
+		output = output.concat(String.format("%3f",secondElapsed));
+		for(AccelerometerReading reading : readings)
+		{
+			output = output.concat(","+Integer.toString(reading.getX()));
+			output = output.concat(","+Integer.toString(reading.getY()));
+			output = output.concat(","+Integer.toString(reading.getZ()));
+		}
+		return output;
+	}
+
+	public String produceHexOutputLine(AccelerometerReading[] readings)
+	{
+		String output = new String("");
+		//NOTE:
+		//  The elapsed time value will be different for each reading
+		//  even though they were all gathered at the same Sync message.
+		//  The timestamp of the first reading will be used on the line
+		//  because that is assumed to be the most accurate. Luckily
+		//  the margin of error is only a few ten thousandths of a second
+		//  so it shouldn't cause any problems.
+		long nanoElapsed = readings[0].getElapsedTime();
+		double secondElapsed = (double)nanoElapsed/(double)1000000000; //10^9
+
+		output = output.concat(String.format("%3f",secondElapsed));
+		for(AccelerometerReading reading : readings)
+		{
+			output = output.concat(", 0x"+Integer.toHexString(reading.getX()));
+			output = output.concat(", 0x"+Integer.toHexString(reading.getY()));
+			output = output.concat(", 0x"+Integer.toHexString(reading.getZ()));
+		}
+		return output;
+	}
+
 }

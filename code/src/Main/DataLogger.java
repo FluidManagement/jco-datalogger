@@ -78,7 +78,7 @@ public class DataLogger
 
 	private DataFormatter dfmt;
 	private FileHandler fileHandler;
-	private SyncListener sl;
+	private SyncListener syncListener;
 	private Timer shutdownTimer;
 	private Thread coThread;
 	private SocketListener socketListener;
@@ -183,6 +183,7 @@ public class DataLogger
 					if(toStdout)
 					{
 						System.out.println(dfmt.produceOutputLine(readings));
+//						System.out.println(dfmt.produceHexOutputLine(readings));
 					}
 					else
 					{
@@ -461,10 +462,10 @@ public class DataLogger
 			switch(toState)
 			{
 			case "start":
-				sl.startSyncListener();
+				syncListener.startSyncListener();
 				return "on";
 			case "stop":
-				sl.stopSyncListener();
+				syncListener.stopSyncListener();
 				return "off";
 			default:
 				return("ERROR: Unknown recording argument");
@@ -773,7 +774,21 @@ public class DataLogger
 					}
 					else if(qName.equalsIgnoreCase("node")) {
 						bNode = false;
+						int cobId = Integer.decode(cobid);
+						int bits = Integer.decode(bitsSample);
+						int iOdIndex = Integer.decode(odIndex);
+
 						debugPrint("node parameters odIndex:("+odIndex+ ") cobid:("+cobid+ ") numSamples:("+ numSamples +") bits per sample:("+ bitsSample+")");
+						
+						nodes.add( new NodeTracker(canOpen, cobId, 0x11, iOdIndex, 0x3, bits, 0,1,2));
+						try
+						{
+							cot.od.getEntry(iOdIndex).getSub(0).addListener(syncListener);
+						}
+						catch(COException e)
+						{
+							System.out.println(e);
+						}
 					}
 				}
 				else if(qName.equalsIgnoreCase("channels")) {
@@ -823,6 +838,9 @@ public class DataLogger
 			try
 			{
 				debugPrint("CANbus driver starting");
+				syncListener = new SyncListener();
+				nodes = new ArrayList<>();//NodeTracker[4];
+
 				SAXParserFactory saxParserFactory = SAXParserFactory.newInstance();
 				SAXParser saxParser = saxParserFactory.newSAXParser();
 				CoXmlHandler handler = new CoXmlHandler(this);
@@ -836,17 +854,15 @@ public class DataLogger
 //				od = DefaultOD.create(0x23);
 //				canOpen = new CanOpen(drvr, od, 0x23, GlobalVars.DEBUG);
 
-				nodes = new ArrayList<>();//NodeTracker[4];
-				nodes.add( new NodeTracker(canOpen, 0x281, rxpdoIndexes[0], odIndexes[0], 0x3, 0x10, 0,1,2));
-				nodes.add( new NodeTracker(canOpen, 0x282, rxpdoIndexes[1], odIndexes[1], 0x3, 0x10, 0,1,2));
-				nodes.add( new NodeTracker(canOpen, 0x283, rxpdoIndexes[2], odIndexes[2], 0x3, 0x10, 0,1,2));
-				nodes.add( new NodeTracker(canOpen, 0x284, rxpdoIndexes[3], odIndexes[3], 0x3, 0x10, 0,1,2));
+//				nodes.add( new NodeTracker(canOpen, 0x281, rxpdoIndexes[0], odIndexes[0], 0x3, 0x10, 0,1,2));
+//				nodes.add( new NodeTracker(canOpen, 0x282, rxpdoIndexes[1], odIndexes[1], 0x3, 20, 0,1,2));
+//				nodes.add( new NodeTracker(canOpen, 0x283, rxpdoIndexes[2], odIndexes[2], 0x3, 0x10, 0,1,2));
+//				nodes.add( new NodeTracker(canOpen, 0x284, rxpdoIndexes[3], odIndexes[3], 0x3, 0x10, 0,1,2));
 
-				sl = new SyncListener();
-				od.getEntry(odIndexes[0]).getSub(0).addListener(sl);
-				od.getEntry(odIndexes[1]).getSub(0).addListener(sl);
-				od.getEntry(odIndexes[2]).getSub(0).addListener(sl);
-				od.getEntry(odIndexes[3]).getSub(0).addListener(sl);
+//				od.getEntry(odIndexes[0]).getSub(0).addListener(syncListener);
+				od.getEntry(odIndexes[1]).getSub(0).addListener(syncListener);
+//				od.getEntry(odIndexes[2]).getSub(0).addListener(syncListener);
+//				od.getEntry(odIndexes[3]).getSub(0).addListener(syncListener);
 
 				debugPrint("CanOpen configured");
 			}
@@ -889,11 +905,11 @@ public class DataLogger
 				nodes.add( new NodeTracker(canOpen, 0x283, rxpdoIndexes[2], odIndexes[2], 0x3, 0x10, 0,1,2));
 				nodes.add( new NodeTracker(canOpen, 0x284, rxpdoIndexes[3], odIndexes[3], 0x3, 0x10, 0,1,2));
 
-				sl = new SyncListener();
-				od.getEntry(odIndexes[0]).getSub(0).addListener(sl);
-				od.getEntry(odIndexes[1]).getSub(0).addListener(sl);
-				od.getEntry(odIndexes[2]).getSub(0).addListener(sl);
-				od.getEntry(odIndexes[3]).getSub(0).addListener(sl);
+				syncListener = new SyncListener();
+				od.getEntry(odIndexes[0]).getSub(0).addListener(syncListener);
+				od.getEntry(odIndexes[1]).getSub(0).addListener(syncListener);
+				od.getEntry(odIndexes[2]).getSub(0).addListener(syncListener);
+				od.getEntry(odIndexes[3]).getSub(0).addListener(syncListener);
 
 				debugPrint("CanOpen configured");
 			}
@@ -917,7 +933,7 @@ public class DataLogger
 					canOpen.start();
 					if(startImmediately)
 					{
-						sl.startSyncListener();
+						syncListener.startSyncListener();
 					}
 					canOpen.join();
 					debugPrint("CanOpenThread.run(): canOpen.start() is finished");
@@ -1056,7 +1072,7 @@ public class DataLogger
 	//Shuts down everything
 	public void gracefulShutdown()
 	{
-		sl.stopSyncListener();
+		syncListener.stopSyncListener();
 		//fileHandler.close(); //stopSyncListener makes a call to fileHandler.close, so this is unnecessary
 		coThread.interrupt();
 		socketListener.closeConnection();
