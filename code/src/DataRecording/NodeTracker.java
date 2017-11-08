@@ -7,59 +7,94 @@ import GlobalVars.GlobalVars;
 import com.gcdc.canopen.*;
 
 import java.util.ArrayList;
+import java.util.Iterator;
 
-public class NodeTracker {
-    private ArrayList<AccelerometerReading> readingBuffer;
-    private CanOpen co;
-    private int targetIndex, nodeId, subindexes[];
-    
+public class NodeTracker
+{
+	private CanOpen co;
+	private int destIndex;
+	private int nodeId;
+	private ArrayList<SubEntry> subs;
+	private int data[];
+
+	//Assumes that the CanOpen has been initialized and the Object dictionary has been created
+	/**
+	*
+	* @param coInstance An already configured instance of CanOpen
+	* @param cobid rpdo CobId of slave node
+	* @param emNormIndex normalized value of the RxPdo index range 0x00-0xff,
+	* @param destIndex Index to place data in Object Dictionary
+	* @param numSamples Number of samples/subindexes to create
+	* @param numBits Length of subindexes
+	* @param subindexes List of subindexes to monitor
+	*/
+	public NodeTracker(CanOpen coInstance, String name, int cobid, int emNormIndex, int destIndex, int numSamples, int numBits, int ... subindexes)
+	{
+		this.nodeId = emNormIndex;
+		this.destIndex = destIndex;
+//		this.subindexes = subindexes;
+		co = coInstance;
+		co.getObjDict().insertRxpdo(name, cobid, emNormIndex, destIndex, numSamples, numBits);
+		try
+		{
+			co.addRxPdoIndex(emNormIndex);
+		}
+		catch (Exception e)
+		{
+		System.out.println("Could not add RxPdo Index");
+		e.printStackTrace();
+		}
+
+		subs = new ArrayList<SubEntry>(numSamples);
+		for(int i = 0; i < subindexes.length;i++)
+		{
+			try
+			{
+				subs.add(co.getObjDict().getSubEntry(destIndex,subindexes[i]));
+			}
+			catch (COException e)
+			{
+				System.out.println("Could not read subentry 0x"+Integer.toHexString(destIndex <<8|subindexes[i]));
+				e.printStackTrace();
+			}
+		}
+
+		data = new int[subs.size()];
+	}
 
 
-    //Assumes that the CanOpen has been initialized and the Object dictionary has been created
-    /**
-     *
-     * @param coInstance An already configured instance of CanOpen
-     * @param cobid CobId of node to be monitored
-     * @param index RxPdo targetIndex
-     * @param targetIndex Index to place data in Object Dictionary
-     * @param numSamples Number of samples/subindexes to create
-     * @param numBits Length of subindexes
-     * @param subindexes List of subindexes to monitor
-     */
-    public NodeTracker(CanOpen coInstance, int cobid, int index, int targetIndex, int numSamples, int numBits, int ... subindexes){
-//        readingBuffer = new ArrayList<>();
-        this.nodeId = index;
-        this.targetIndex = targetIndex;
-        this.subindexes = subindexes;
-        co = coInstance;
-        DefaultOD.insertRxpdo(co.getObjDict(), cobid, index, targetIndex, numSamples, numBits);
-        try {
-            co.addRxPdoIndex(index);
-        } catch (Exception e) {
-            System.out.println("Could not add RxPdo Index");
-            e.printStackTrace();
-        }
-//        SyncListener syncListener = new SyncListener();
-//        co.addSyncListener(syncListener);
-    }
+	public AccelerometerReading getLatestReading()
+	{
+		Iterator<SubEntry> ise = subs.iterator();
+		int j = 0;
+		try
+		{
+			while( ise.hasNext())
+			{
+				data[j++] = ise.next().getInt();
+			}
+		}
+		catch(COException e)
+		{
+			System.out.println(";Could not read subentry 0x"+Integer.toHexString(destIndex <<8));
+			e.printStackTrace();
+		}
+		return( new AccelerometerReading(data));
+	}
 
-//    public AccelerometerReading getLatestReading(){
-//        return readingBuffer.remove(readingBuffer.size()-1);
-//    }
 
-    public AccelerometerReading getLatestReading(){
-        long elapsedTime = System.nanoTime()-GlobalVars.START_TIME;
-        int data[] = new int[3];
-        for(int i = 0; i < subindexes.length;i++){
-            try {
-                data[i] = co.getObjDict().getSubEntry(targetIndex,subindexes[i]).getInt();
-            } catch (Exception e) {
-                System.out.println("Could not read subentry 0x"+Integer.toHexString(targetIndex <<8|subindexes[i]));
-                e.printStackTrace();
-            }
-//            readingBuffer.add(new AccelerometerReading(elapsedTime,data,targetIndex));
+	public String getName()
+	{
+		String name;
+		try
+		{
+			name  = co.getObjDict().getEntry(destIndex).getName();
+		}
+		catch(COException e)
+		{
+			name = "Unknown";
+		}
+		return(name);
+	}
 
-        }
-        return new AccelerometerReading(elapsedTime,data, targetIndex, nodeId);
-    }
 }

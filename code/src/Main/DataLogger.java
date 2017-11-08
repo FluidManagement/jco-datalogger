@@ -163,26 +163,41 @@ public class DataLogger
 		@Override
 		public void onMessage(CanMessage canMessage)
 		{
+//			long nanoStart = System.nanoTime();
 			debugPrint("SYNC message received");
+			                
 			if(objectDictReady)
 			{
 				if (GlobalVars.START_TIME == null)
 				{
 					GlobalVars.START_TIME = System.nanoTime();
 					fileHandler.createFile();
-					fileHandler.printLine(dfmt.produceHeader(rxpdoIndexes));
-					debugPrint(dfmt.produceHeader(rxpdoIndexes));
+					String header = dfmt.produceHeader(nodes);
+					fileHandler.printLine(header);
+					debugPrint(header);
+					if(toStdout)
+					{
+						System.out.println(header);
+					}
 				}
 				else
 				{
+					long elapsedTime = System.nanoTime()-GlobalVars.START_TIME;
+
 					AccelerometerReading readings[] = new AccelerometerReading[nodes.size()];
-					for(int i = 0; i < nodes.size(); i++ )
+					for(int i=0; i<nodes.size(); i++ )
 					{
 						readings[i] = nodes.get(i).getLatestReading();
 					}
+//					long nanoFmtStart = System.nanoTime();
+					String formattedLine = dfmt.produceOutputLine(elapsedTime, readings);
+//					long nanoDone = System.nanoTime();
 					if(toStdout)
-					{
-						System.out.println(dfmt.produceOutputLine(readings));
+					{	
+						System.out.println(formattedLine);
+//						System.out.println("stime: "+(nanoFmtStart-nanoStart)/1000+"usec");
+//						System.out.println("ftime: "+(nanoDone - nanoFmtStart)/1000+"usec");
+//						System.out.println("ptime: "+(nanoDone-nanoStart)/1000+"usec");
 //						System.out.println(dfmt.produceHexOutputLine(readings));
 					}
 					else
@@ -190,8 +205,8 @@ public class DataLogger
 						//debugPrint(dfmt.producePrettyOutputString(readings));
 						if((fileHandler.currentSampleSize <  fileLength)||infiniteDataFile)
 						{
-							fileHandler.printSample(dfmt.produceOutputLine(readings));
-							debugPrint(dfmt.produceOutputLine(readings));
+							fileHandler.printSample(formattedLine);
+							debugPrint(formattedLine);
 						}
 						else
 						{
@@ -659,6 +674,8 @@ public class DataLogger
 		String odIndex;
 		boolean bCobid = false;
 		String cobid;
+		boolean bName = false;
+		String sName;
 		boolean bNumSamples = false;
 		String numSamples;
 		boolean bBitsSample = false;
@@ -701,6 +718,9 @@ public class DataLogger
 //debugPrint("in new node");
 					if(qName.equalsIgnoreCase("od_index")) {
 						bOdIndex = true;
+					}
+					else if(qName.equalsIgnoreCase("name")) {
+						bName = true;
 					}
 					else if(qName.equalsIgnoreCase("cobid")) {
 						bCobid = true;
@@ -766,6 +786,9 @@ public class DataLogger
 					else if(qName.equalsIgnoreCase("cobid")) {
 						bCobid = false;
 					}
+					else if(qName.equalsIgnoreCase("name")) {
+						bName = false;
+					}
 					else if(qName.equalsIgnoreCase("num_samples")) {
 						bNumSamples = false;
 					}
@@ -779,8 +802,9 @@ public class DataLogger
 						int iOdIndex = Integer.decode(odIndex);
 
 						debugPrint("node parameters odIndex:("+odIndex+ ") cobid:("+cobid+ ") numSamples:("+ numSamples +") bits per sample:("+ bitsSample+")");
-						
-						nodes.add( new NodeTracker(canOpen, cobId, 0x11, iOdIndex, 0x3, bits, 0,1,2));
+//						 public NodeTracker(CanOpen coInstance, String name, int cobid, int emNormIndex, int destIndex, int numSamples, int numBits, int ... subindexes)
+
+						nodes.add( new NodeTracker(canOpen, sName, cobId, 0x11, iOdIndex, 0x3, bits, 0,1,2));
 						try
 						{
 							cot.od.getEntry(iOdIndex).getSub(0).addListener(syncListener);
@@ -817,6 +841,8 @@ public class DataLogger
 				odIndex = temp;
 			else if(bCobid)
 				cobid = temp;
+			else if(bName)
+				sName = temp;
 			else if(bNumSamples)
 				numSamples = temp;
 			else if(bBitsSample)
@@ -900,10 +926,10 @@ public class DataLogger
 				canOpen = new CanOpen(drvr, od, 0x23, GlobalVars.DEBUG);
 
 				nodes = new ArrayList<>();
-				nodes.add( new NodeTracker(canOpen, 0x281, rxpdoIndexes[0], odIndexes[0], 0x3, 0x10, 0,1,2));
-				nodes.add( new NodeTracker(canOpen, 0x282, rxpdoIndexes[1], odIndexes[1], 0x3, 0x10, 0,1,2));
-				nodes.add( new NodeTracker(canOpen, 0x283, rxpdoIndexes[2], odIndexes[2], 0x3, 0x10, 0,1,2));
-				nodes.add( new NodeTracker(canOpen, 0x284, rxpdoIndexes[3], odIndexes[3], 0x3, 0x10, 0,1,2));
+				nodes.add( new NodeTracker(canOpen, "chA", 0x281, rxpdoIndexes[0], odIndexes[0], 0x3, 0x10, 0,1,2));
+				nodes.add( new NodeTracker(canOpen, "chB", 0x282, rxpdoIndexes[1], odIndexes[1], 0x3, 0x10, 0,1,2));
+				nodes.add( new NodeTracker(canOpen, "chC", 0x283, rxpdoIndexes[2], odIndexes[2], 0x3, 0x10, 0,1,2));
+				nodes.add( new NodeTracker(canOpen, "chD", 0x284, rxpdoIndexes[3], odIndexes[3], 0x3, 0x10, 0,1,2));
 
 				syncListener = new SyncListener();
 				od.getEntry(odIndexes[0]).getSub(0).addListener(syncListener);

@@ -1,67 +1,66 @@
 package DataRecording;
 
 /**
- * Stores a full description of an accelerometer reading
- * Created by gcdc on 6/7/17.
- */
-public class AccelerometerReading {
-    long elapsedTime;
-    int x,y,z;
-    int index, nodeId;
+* Stores a full description of an accelerometer reading
+* Created by gcdc on 6/7/17.
+*/
+public class AccelerometerReading
+{
+	private int x,y,z;
 
-    /**
-     *
-     * @param elapsedTime Time from initial sync
-     * @param x x accelerometer reading
-     * @param y y accelerometer reading
-     * @param z z accelerometer reading
-     * @param index index in object dictionary where reading was stored
-     * @param nodeId Id of node that created this reading
-     */
-    public AccelerometerReading(long elapsedTime, int x, int y, int z, int index, int nodeId){
-        this.elapsedTime = elapsedTime;
-        this.x = x;
-        this.y = y;
-        this.z = z;
-        this.index = index;
-        this.nodeId = nodeId;
-    }
+	/**
+	*
+	* @param elapsedTime Time from initial sync
+	* @param x x accelerometer reading
+	* @param y y accelerometer reading
+	* @param z z accelerometer reading
+	* @param index index in object dictionary where reading was stored
+	* @param nodeId Id of node that created this reading
+	*/
+	public AccelerometerReading(int x, int y, int z)
+	{
+		this.x = x;
+		this.y = y;
+		this.z = z;
+	}
 
-    public AccelerometerReading(long elapsedTime, int[] data, int index, int nodeId){
-        this.elapsedTime = elapsedTime;
-        this.x = data[0];
-        this.y = data[1];
-        this.z = data[2];
-        //can add functionality for more data coming off the nodes
-        this.index = index;
-        this.nodeId = nodeId;
-    }
+	public AccelerometerReading( int[] data)
+	{
+		this.x = data[0];
+		this.y = data[1];
+		this.z = data[2];
+	}
 
-    public long getElapsedTime() {
-        return elapsedTime;
-    }
 
-    public int getX() {
-        return x;
-    }
+	public int getX()
+	{
+		return x;
+	}
 
-    public int getY() {
-        return y;
-    }
 
-    public int getZ() {
-        return z;
-    }
+	public int getY()
+	{
+		return y;
+	}
 
-    public int getIndex() {
-        return index;
-    }
-    
-    public int getNodeId(){
-        return nodeId;
-    }
+	public int getZ()
+	{
+		return z;
+	}
 
-    public String toString(){
-        return String.format("Elapsed Time: %d \nX: %d, Y: %d, Z: %d\nIndex: 0x%04x\n",elapsedTime,x,y,z,index);
-    }
+	public String toString()
+	{
+		return String.format("X: %d, Y: %d, Z: %d\n",x,y,z);
+	}
+	
+	public StringBuilder toStringBuilder()
+	{
+		StringBuilder output = new StringBuilder(100);
+		output.append(x);
+		output.append(",");
+		output.append(y);
+		output.append(",");
+		output.append(z);
+		return(output);
+	}
 }
