@@ -79,6 +79,7 @@ public class DataLogger
 	private DataFormatter dfmt;
 	private FileHandler fileHandler;
 	private SyncListener syncListener;
+	private COListener coListener;
 	private Timer shutdownTimer;
 	private Thread coThread;
 	private SocketListener socketListener;
@@ -165,7 +166,7 @@ public class DataLogger
 		{
 //			long nanoStart = System.nanoTime();
 			debugPrint("SYNC message received");
-			                
+
 			if(objectDictReady)
 			{
 				if (GlobalVars.START_TIME == null)
@@ -193,7 +194,7 @@ public class DataLogger
 					String formattedLine = dfmt.produceOutputLine(elapsedTime, readings);
 //					long nanoDone = System.nanoTime();
 					if(toStdout)
-					{	
+					{
 						System.out.println(formattedLine);
 //						System.out.println("stime: "+(nanoFmtStart-nanoStart)/1000+"usec");
 //						System.out.println("ftime: "+(nanoDone - nanoFmtStart)/1000+"usec");
@@ -230,7 +231,35 @@ public class DataLogger
 		}
 
 		@Override
-		public void onEvent(CanOpen canOpen, int state) {}
+		public void onEvent(CanOpen canOpen)
+		{
+			System.out.println("DataLogger.onEvent() State change to : "+canOpen.getStateString());
+		}
+	}
+
+	private class COListener implements CanOpenListener
+	{
+		boolean objectDictReady = false;
+
+		@Override
+		public void onMessage(CanMessage canMessage) {}
+
+		@Override
+		public void onObjDictChange(SubEntry se) {}
+
+		@Override
+		public void onEvent(CanOpen canOpen)
+		{
+			System.out.println("NmtListner.onEvent() State change "+canOpen.getStateString());
+			if(canOpen.isResetNodeState())
+			{
+				System.out.println("need to stop recording on this event");
+			}
+			else if(canOpen.isOperationalState())
+			{
+				System.out.println("need to potentially start recording on this event");
+			}
+		}
 	}
 
 	private class FileHandler
@@ -680,6 +709,7 @@ public class DataLogger
 		String numSamples;
 		boolean bBitsSample = false;
 		String bitsSample;
+		private int rxPdoCtlMapIndex = 0x11;
 
 		CoXmlHandler(CanOpenThread cot)
 		{
@@ -804,7 +834,7 @@ public class DataLogger
 						debugPrint("node parameters odIndex:("+odIndex+ ") cobid:("+cobid+ ") numSamples:("+ numSamples +") bits per sample:("+ bitsSample+")");
 //						 public NodeTracker(CanOpen coInstance, String name, int cobid, int emNormIndex, int destIndex, int numSamples, int numBits, int ... subindexes)
 
-						nodes.add( new NodeTracker(canOpen, sName, cobId, 0x11, iOdIndex, 0x3, bits, 0,1,2));
+						nodes.add( new NodeTracker(canOpen, sName, cobId, rxPdoCtlMapIndex++, iOdIndex, 0x3, bits, 0,1,2));
 						try
 						{
 							cot.od.getEntry(iOdIndex).getSub(0).addListener(syncListener);
@@ -865,6 +895,7 @@ public class DataLogger
 			{
 				debugPrint("CANbus driver starting");
 				syncListener = new SyncListener();
+				coListener = new COListener();
 				nodes = new ArrayList<>();//NodeTracker[4];
 
 				SAXParserFactory saxParserFactory = SAXParserFactory.newInstance();
@@ -873,7 +904,7 @@ public class DataLogger
 				File fXmlFile = new File(fname);
 				saxParser.parse(fXmlFile, handler);
 
-
+				canOpen.addEventListener(coListener);
 //				dm = new DriverManager("datagram", address, 2000, false);
 //				drvr = dm.getDriver();
 //				debugPrint("CANbus driver configured");
@@ -956,7 +987,7 @@ public class DataLogger
 				do
 				{
 					debugPrint("CanOpen Starting");
-					canOpen.start();
+					canOpen.startTasks();
 					if(startImmediately)
 					{
 						syncListener.startSyncListener();
@@ -969,14 +1000,12 @@ public class DataLogger
 			catch(InterruptedException ie)
 			{
 				dm.unloadDriver();
-				canOpen.toRebootState();
 				coThread.interrupt();
 				coThread = null;
 				dm.unloadDriver();
 				drvr = null;
 				dm = null;
 				System.gc();
-				canOpen.toRebootState();
 				canOpen = null;
 				od = null;
 				GlobalVars.START_TIME = null;
@@ -984,10 +1013,10 @@ public class DataLogger
 				fileHandler = null;
 				System.gc();
 			}
-	//		catch(COException coe)
-//			{
-//				coe.printStackTrace();
-//			}
+			catch(Exception coe)
+			{
+				coe.printStackTrace();
+			}
 		}
 	} // end private class def
 
@@ -1068,7 +1097,6 @@ public class DataLogger
 				debugPrint("Using default object dictionary entries");
 				coThread = new Thread(new CanOpenThread());
 			}
-
 			coThread.start();
 
 			try
