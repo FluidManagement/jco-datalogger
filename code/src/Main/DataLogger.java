@@ -51,6 +51,7 @@ import org.kohsuke.args4j.Option;
 import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
+import org.kohsuke.args4j.ParserProperties;
 
 // for parasing an xml config file
 import javax.xml.parsers.SAXParserFactory;
@@ -658,6 +659,7 @@ public class DataLogger
 		}
 	}  // end private class def SocketListener
 
+
 	private class CoXmlHandler extends DefaultHandler
 	{
 		CanOpenThread cot;
@@ -758,8 +760,10 @@ public class DataLogger
 				int iAddr = Integer.decode(canAddr);
 				debugPrint("canopen addr: ("+canAddr+")"+"  val:"+iAddr);
 				cot.od = DefaultOD.create(iAddr);
+				//                              nodeId,  type, heartbeatMs,vendorId,productId, revisionNum, serialNum
+//				cot.od = DefaultOD.createStandardDict(iAddr, 0x0, 5000, 0x0000029C, 0x19, 0x11, 0x1234 );
+				                                                          
 				canOpen = new CanOpen(cot.drvr, cot.od, iAddr, GlobalVars.DEBUG);
-
 			}
 			else if(qName.equalsIgnoreCase("channels")) {
 				bChannels = false;
@@ -848,7 +852,6 @@ public class DataLogger
 		private DriverManager dm;
 		private Driver drvr;
 		private ObjectDictionary od;
-		private int odIndexes[] = new int[]{0x6210, 0x6211, 0x6212, 0x6213};
 
 		CanOpenThread(String fname) throws Exception
 		{
@@ -950,8 +953,9 @@ public class DataLogger
 	{
 		this.args = args;
 
-		CmdLineParser parser = new CmdLineParser(this);
-		parser.setUsageWidth(100);//???
+		ParserProperties pp = ParserProperties.defaults().withUsageWidth(100);
+		CmdLineParser parser = new CmdLineParser(this, pp);
+//		parser.setUsageWidth(100);//???
 		try
 		{
 			parser.parseArgument(args);

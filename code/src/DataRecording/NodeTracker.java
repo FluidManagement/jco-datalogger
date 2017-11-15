@@ -41,8 +41,8 @@ public class NodeTracker
 		}
 		catch (Exception e)
 		{
-		System.out.println("Could not add RxPdo Index");
-		e.printStackTrace();
+			System.out.println("Could not add RxPdo Index");
+			e.printStackTrace();
 		}
 
 		subs = new ArrayList<SubEntry>(numSamples);
