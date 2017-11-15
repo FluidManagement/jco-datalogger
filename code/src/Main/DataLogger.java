@@ -64,24 +64,20 @@ import org.xml.sax.SAXException;
 import org.xml.sax.helpers.DefaultHandler;
 
 
-
-
-
 /**
  * Created by gcdc on 6/7/17.
  */
 public class DataLogger
 {
 	private CanOpen canOpen;
-	private int rxpdoIndexes[] = new int[]{0x10, 0x11, 0x12, 0x13};
+	private COListener coListener;
+	private Thread coThread;
+
 	private ArrayList<NodeTracker> nodes;
 
 	private DataFormatter dfmt;
 	private FileHandler fileHandler;
-	private SyncListener syncListener;
-	private COListener coListener;
 	private Timer shutdownTimer;
-	private Thread coThread;
 	private SocketListener socketListener;
 	private Thread socketThread;
 	private String[] args;
@@ -126,10 +122,8 @@ public class DataLogger
 	private Boolean help = false;
 
 
-	private class SyncListener implements CanOpenListener
+	private class COListener implements CanOpenListener
 	{
-		boolean objectDictReady = false;
-
 		//Adds Self to the Canopen instance's list of sync listeners
 		public void startSyncListener()
 		{
@@ -149,118 +143,97 @@ public class DataLogger
 		public void stopSyncListener()
 		{
 			canOpen.removeSyncListener(this);
-			fileHandler.close();
+			if(!toStdout)
+				fileHandler.close();
 			GlobalVars.START_TIME = null;
 			recordingStatus = false;
 		}
 
-		//Acts on recieved sync messages
-		//Creates new file if needed
-		//Gets the latest sample from the NodeListeners
-		//Closes file and clears the per-file start time if file size is reached
-		/*
+		/**
+		* Acts on recieved sync messages.
+		* Creates new file if needed
+		* Gets the latest sample from the NodeListeners
+		* Closes file and clears the per-file start time if file size is reached
 		* @param canMessage - The Sync message, supplied by CanOpen. Currently unused
 		*/
-		@Override
 		public void onMessage(CanMessage canMessage)
 		{
 //			long nanoStart = System.nanoTime();
 			debugPrint("SYNC message received");
 
-			if(objectDictReady)
+			if (GlobalVars.START_TIME == null)
 			{
-				if (GlobalVars.START_TIME == null)
+				GlobalVars.START_TIME = System.nanoTime();
+				String header = dfmt.produceHeader(nodes);
+				if(toStdout)
 				{
-					GlobalVars.START_TIME = System.nanoTime();
-					fileHandler.createFile();
-					String header = dfmt.produceHeader(nodes);
-					fileHandler.printLine(header);
-					debugPrint(header);
-					if(toStdout)
-					{
-						System.out.println(header);
-					}
+					System.out.println(header);
 				}
 				else
 				{
-					long elapsedTime = System.nanoTime()-GlobalVars.START_TIME;
+					fileHandler.createFile();
+					fileHandler.printLine(header);
+				}
+			}
+			else
+			{
+				long elapsedTime = System.nanoTime()-GlobalVars.START_TIME;
 
-					AccelerometerReading readings[] = new AccelerometerReading[nodes.size()];
-					for(int i=0; i<nodes.size(); i++ )
+				AccelerometerReading readings[] = new AccelerometerReading[nodes.size()];
+				for(int i=0; i<nodes.size(); i++ )
+				{
+					readings[i] = nodes.get(i).getLatestReading();
+				}
+//				long nanoFmtStart = System.nanoTime();
+				String formattedLine = dfmt.produceOutputLine(elapsedTime, readings);
+//				long nanoDone = System.nanoTime();
+				if(toStdout)
+				{
+					System.out.println(formattedLine);
+//					System.out.println("stime: "+(nanoFmtStart-nanoStart)/1000+"usec");
+//					System.out.println("ftime: "+(nanoDone - nanoFmtStart)/1000+"usec");
+//					System.out.println("ptime: "+(nanoDone-nanoStart)/1000+"usec");
+//					System.out.println(dfmt.produceHexOutputLine(readings));
+				}
+				else
+				{
+					//debugPrint(dfmt.producePrettyOutputString(readings));
+					if((fileHandler.currentSampleSize <  fileLength)||infiniteDataFile)
 					{
-						readings[i] = nodes.get(i).getLatestReading();
-					}
-//					long nanoFmtStart = System.nanoTime();
-					String formattedLine = dfmt.produceOutputLine(elapsedTime, readings);
-//					long nanoDone = System.nanoTime();
-					if(toStdout)
-					{
-						System.out.println(formattedLine);
-//						System.out.println("stime: "+(nanoFmtStart-nanoStart)/1000+"usec");
-//						System.out.println("ftime: "+(nanoDone - nanoFmtStart)/1000+"usec");
-//						System.out.println("ptime: "+(nanoDone-nanoStart)/1000+"usec");
-//						System.out.println(dfmt.produceHexOutputLine(readings));
+						fileHandler.printSample(formattedLine);
+						debugPrint(formattedLine);
 					}
 					else
 					{
-						//debugPrint(dfmt.producePrettyOutputString(readings));
-						if((fileHandler.currentSampleSize <  fileLength)||infiniteDataFile)
-						{
-							fileHandler.printSample(formattedLine);
-							debugPrint(formattedLine);
-						}
-						else
-						{
-							GlobalVars.START_TIME = null;
-							fileHandler.close();
-						}
+						GlobalVars.START_TIME = null;
+						fileHandler.close();
 					}
 				}
 			}
 		}
 
-		//Listens to the objestDictionary and sets a flag whenever a change occurs to a specific index
-		//After a change has occured that means the busmaster has begun recieving pdos
-		/*
-		 * @param se - Subentry that has changed, unused
-		 */
-		@Override
-		public void onObjDictChange(SubEntry se)
-		{
-		    objectDictReady = true;
-		}
-
-		@Override
-		public void onEvent(CanOpen canOpen)
-		{
-			System.out.println("DataLogger.onEvent() State change to : "+canOpen.getStateString());
-		}
-	}
-
-	private class COListener implements CanOpenListener
-	{
-		boolean objectDictReady = false;
-
-		@Override
-		public void onMessage(CanMessage canMessage) {}
-
-		@Override
 		public void onObjDictChange(SubEntry se) {}
 
-		@Override
+		/**
+		* Process CAN-Open state change events here
+		*/
 		public void onEvent(CanOpen canOpen)
 		{
-			System.out.println("NmtListner.onEvent() State change "+canOpen.getStateString());
+//			System.out.println("NmtListner.onEvent() State change "+canOpen.getStateString());
 			if(canOpen.isResetNodeState())
 			{
-				System.out.println("need to stop recording on this event");
+				stopSyncListener();
 			}
 			else if(canOpen.isOperationalState())
 			{
-				System.out.println("need to potentially start recording on this event");
+//				System.out.println("need to potentially start recording on this event");
+				if(startImmediately)
+				{
+					startSyncListener(); }
 			}
 		}
 	}
+
 
 	private class FileHandler
 	{
@@ -336,19 +309,19 @@ public class DataLogger
 		//Closes file and makes comment at end of file
 		public void close()
 		{
-			makeEOFComment();
 			if(output!=null)
 			{
+				makeEOFComment();
 				output.close();
 			}
 			output = null;
 		}
 
-		//Prints a line of text to the current file
-		/*
+		/**
+		 * Prints a line of text to the current file
 		 * @param line - Line to be printed
 		 */
-		public void printLine(String line)
+		void printLine(String line)
 		{
 		    if(output == null)
 				createFile();
@@ -356,11 +329,11 @@ public class DataLogger
 		    output.flush();
 		}
 
-		//Wrapper for println that increments the currentSampleSize
-		/*
+		/**
+		* Wrapper for println that increments the currentSampleSize
 		* @param sample - Line to be printed;
 		*/
-		public void printSample(String sample)
+		void printSample(String sample)
 		{
 			printLine(sample);
 			currentSampleSize++;
@@ -506,10 +479,10 @@ public class DataLogger
 			switch(toState)
 			{
 			case "start":
-				syncListener.startSyncListener();
+				coListener.startSyncListener();
 				return "on";
 			case "stop":
-				syncListener.stopSyncListener();
+				coListener.stopSyncListener();
 				return "off";
 			default:
 				return("ERROR: Unknown recording argument");
@@ -719,7 +692,6 @@ public class DataLogger
 		@Override
 		public void startElement(String uri, String localName, String qName, Attributes attributes) throws SAXException
 		{
-//debugPrint("qName "+qName);
 			if(qName.equalsIgnoreCase("can_driver")) {
 				bDriver = true;
 			}
@@ -745,7 +717,6 @@ public class DataLogger
 			{
 				if(bNode)
 				{
-//debugPrint("in new node");
 					if(qName.equalsIgnoreCase("od_index")) {
 						bOdIndex = true;
 					}
@@ -832,17 +803,8 @@ public class DataLogger
 						int iOdIndex = Integer.decode(odIndex);
 
 						debugPrint("node parameters odIndex:("+odIndex+ ") cobid:("+cobid+ ") numSamples:("+ numSamples +") bits per sample:("+ bitsSample+")");
-//						 public NodeTracker(CanOpen coInstance, String name, int cobid, int emNormIndex, int destIndex, int numSamples, int numBits, int ... subindexes)
 
 						nodes.add( new NodeTracker(canOpen, sName, cobId, rxPdoCtlMapIndex++, iOdIndex, 0x3, bits, 0,1,2));
-						try
-						{
-							cot.od.getEntry(iOdIndex).getSub(0).addListener(syncListener);
-						}
-						catch(COException e)
-						{
-							System.out.println(e);
-						}
 					}
 				}
 				else if(qName.equalsIgnoreCase("channels")) {
@@ -857,7 +819,6 @@ public class DataLogger
 			String temp = new String(ch, start, length).trim();
 			if(temp.length() == 0)
 				return;
-//debugPrint("char: ("+temp+")");
 
 			if(bType)
 				type = temp;
@@ -894,7 +855,6 @@ public class DataLogger
 			try
 			{
 				debugPrint("CANbus driver starting");
-				syncListener = new SyncListener();
 				coListener = new COListener();
 				nodes = new ArrayList<>();//NodeTracker[4];
 
@@ -905,28 +865,8 @@ public class DataLogger
 				saxParser.parse(fXmlFile, handler);
 
 				canOpen.addEventListener(coListener);
-//				dm = new DriverManager("datagram", address, 2000, false);
-//				drvr = dm.getDriver();
-//				debugPrint("CANbus driver configured");
-//				od = DefaultOD.create(0x23);
-//				canOpen = new CanOpen(drvr, od, 0x23, GlobalVars.DEBUG);
-
-//				nodes.add( new NodeTracker(canOpen, 0x281, rxpdoIndexes[0], odIndexes[0], 0x3, 0x10, 0,1,2));
-//				nodes.add( new NodeTracker(canOpen, 0x282, rxpdoIndexes[1], odIndexes[1], 0x3, 20, 0,1,2));
-//				nodes.add( new NodeTracker(canOpen, 0x283, rxpdoIndexes[2], odIndexes[2], 0x3, 0x10, 0,1,2));
-//				nodes.add( new NodeTracker(canOpen, 0x284, rxpdoIndexes[3], odIndexes[3], 0x3, 0x10, 0,1,2));
-
-//				od.getEntry(odIndexes[0]).getSub(0).addListener(syncListener);
-				od.getEntry(odIndexes[1]).getSub(0).addListener(syncListener);
-//				od.getEntry(odIndexes[2]).getSub(0).addListener(syncListener);
-//				od.getEntry(odIndexes[3]).getSub(0).addListener(syncListener);
 
 				debugPrint("CanOpen configured");
-			}
-			catch(COException coe)
-			{
-				coe.printStackTrace();
-				throw(new Exception("outta here"));
 			}
 			catch(ParserConfigurationException pce)
 			{
@@ -945,36 +885,6 @@ public class DataLogger
 			}
 		}
 
-		CanOpenThread()
-		{
-			try
-			{
-				debugPrint("CANbus driver starting");
-				dm = new DriverManager("datagram", address, 2000, false);
-				drvr = dm.getDriver();
-				debugPrint("CANbus driver configured");
-				od = DefaultOD.create(0x23);
-				canOpen = new CanOpen(drvr, od, 0x23, GlobalVars.DEBUG);
-
-				nodes = new ArrayList<>();
-				nodes.add( new NodeTracker(canOpen, "chA", 0x281, rxpdoIndexes[0], odIndexes[0], 0x3, 0x10, 0,1,2));
-				nodes.add( new NodeTracker(canOpen, "chB", 0x282, rxpdoIndexes[1], odIndexes[1], 0x3, 0x10, 0,1,2));
-				nodes.add( new NodeTracker(canOpen, "chC", 0x283, rxpdoIndexes[2], odIndexes[2], 0x3, 0x10, 0,1,2));
-				nodes.add( new NodeTracker(canOpen, "chD", 0x284, rxpdoIndexes[3], odIndexes[3], 0x3, 0x10, 0,1,2));
-
-				syncListener = new SyncListener();
-				od.getEntry(odIndexes[0]).getSub(0).addListener(syncListener);
-				od.getEntry(odIndexes[1]).getSub(0).addListener(syncListener);
-				od.getEntry(odIndexes[2]).getSub(0).addListener(syncListener);
-				od.getEntry(odIndexes[3]).getSub(0).addListener(syncListener);
-
-				debugPrint("CanOpen configured");
-			}
-			catch(COException coe)
-			{
-				coe.printStackTrace();
-			}
-		}
 
 		//Sets up CanOpen stuff
 		//Creates the NodeTrackers and SyncListener
@@ -990,7 +900,7 @@ public class DataLogger
 					canOpen.startTasks();
 					if(startImmediately)
 					{
-						syncListener.startSyncListener();
+						coListener.startSyncListener();
 					}
 					canOpen.join();
 					debugPrint("CanOpenThread.run(): canOpen.start() is finished");
@@ -1082,6 +992,8 @@ public class DataLogger
 			GlobalVars.DEBUG = debug;
 
 			dfmt = new DataFormatter();
+			dfmt.setTitle("http://www.gcdataconcepts.com, Datalogger");
+			dfmt.setSampleRate("fixeme, Hz");
 			fileHandler = new FileHandler();
 
 			recordingStatus = false;
@@ -1090,15 +1002,18 @@ public class DataLogger
 				if( xmlFileName != null)
 					coThread = new Thread(new CanOpenThread(xmlFileName));
 				else
-					coThread = new Thread(new CanOpenThread());
+				{
+					System.out.println("data logger requires a config file.");
+					System.exit(-2);
+				}
 			}
 			catch( Exception e)
 			{
-				debugPrint("Using default object dictionary entries");
-				coThread = new Thread(new CanOpenThread());
+				System.out.println("Can't use default object dictionary entries anymore");
+				System.exit(-2);
 			}
-			coThread.start();
 
+			coThread.start();
 			try
 			{
 				socketThread.join();
@@ -1111,12 +1026,13 @@ public class DataLogger
 	}
 
 
-	//Utility to print debug info
-	//only prints when DEBUG is turned on
-	/*
+	/**
+	* Utility to print debug info
+	* only prints when DEBUG is turned on
+	*
 	* param s - String to print
 	*/
-	public static void debugPrint(String s)
+	static void debugPrint(String s)
 	{
 		if(GlobalVars.DEBUG)
 			System.out.println(s);
@@ -1124,9 +1040,9 @@ public class DataLogger
 
 
 	//Shuts down everything
-	public void gracefulShutdown()
+	void gracefulShutdown()
 	{
-		syncListener.stopSyncListener();
+		coListener.stopSyncListener();
 		//fileHandler.close(); //stopSyncListener makes a call to fileHandler.close, so this is unnecessary
 		coThread.interrupt();
 		socketListener.closeConnection();

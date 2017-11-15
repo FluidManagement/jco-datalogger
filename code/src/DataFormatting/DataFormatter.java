@@ -20,8 +20,14 @@ public class DataFormatter
 	private final String REVISION_KEY = "Canopen-Revision";
 	private final String DATE_KEY = "Build-Date";
 	private final String VERSION_KEY = "Version";
-	public DataFormatter(){}
-
+	public DataFormatter()
+	{
+		setTitle("blank");
+		setSampleRate("unknown");
+	}
+	String title;
+	String sampleRate;
+	
 	/**
 	*
 	* @param readings A list of readings from the accelerometers
@@ -60,6 +66,16 @@ public class DataFormatter
 			val = "";
 		return val;
 	}
+	
+	public void setTitle(String title)
+	{
+		this.title = new String(";Title "+ title+"\n");
+	}
+
+	public void setSampleRate(String rate)
+	{
+		sampleRate = new String(";SampleRate, "+ rate+"\n");
+	}
 
 
 	/**
@@ -82,35 +98,27 @@ public class DataFormatter
 		{
 			System.out.println(";Manifest could not be read");
 		}
-		String header = new String("");
 
-		String headerTitle = ";Title";
-		headerTitle = headerTitle.concat(", [url]");
-		headerTitle = headerTitle.concat(", [product]");
-		headerTitle = headerTitle.concat(", [sensor_type]");
-		header = header.concat(headerTitle+"\n");
+		String header = new String(title);
+
 
 		String headerVersion = ";Version";
 		headerVersion = headerVersion.concat(","+getManifestAttribute(VERSION_KEY,attrs));
 		headerVersion = headerVersion.concat(", Build date:");
 		headerVersion = headerVersion.concat(","+getManifestAttribute(DATE_KEY,attrs));
-		headerVersion = headerVersion.concat(", [serial_number]");
 		header = header.concat(headerVersion + "\n");
 
-		String headerCanopen = ";Canopen";
-		headerCanopen = headerCanopen.concat(", Revision:");
-		headerCanopen = headerCanopen.concat(","+ getManifestAttribute(REVISION_KEY,attrs));
-		header = header.concat(headerCanopen + "\n");
+//		String headerCanopen = ";Canopen";
+//		headerCanopen = headerCanopen.concat(", Revision:");
+//		headerCanopen = headerCanopen.concat(","+ getManifestAttribute(REVISION_KEY,attrs));
+//		header = header.concat(headerCanopen + "\n");
 
 		String headerStartTime = ";StartTime";
 		headerStartTime = headerStartTime.concat(","+new SimpleDateFormat("yyyy-MM-d").format(new Date()));
 		headerStartTime = headerStartTime.concat(","+new SimpleDateFormat("HH:mm:ss.SS").format(new Date()));
 		header = header.concat(headerStartTime+"\n");
 
-		String headerSample = ";SampleRate";
-		headerSample = headerSample.concat(", [rate]");
-		headerSample = headerSample.concat(", [unit]");
-		header = header.concat(headerSample+"\n");
+		header = header.concat(sampleRate);
 
 
 		String headerLabels = ";Time, "; //new String(";").concat(new SimpleDateFormat("EEE d MMM yyyy HH:mm:ss:SS z").format(new Date()));
