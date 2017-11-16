@@ -125,6 +125,7 @@ public class DataLogger
 
 	private class COListener implements CanOpenListener
 	{
+		long elapsedTimeNs = 0;
 		//Adds Self to the Canopen instance's list of sync listeners
 		public void startSyncListener()
 		{
@@ -144,8 +145,15 @@ public class DataLogger
 		public void stopSyncListener()
 		{
 			canOpen.removeSyncListener(this);
-			if(!toStdout)
-				fileHandler.close();
+			try
+			{
+				if(!toStdout)
+					fileHandler.close(elapsedTimeNs);
+			}
+			catch(Exception e)
+			{
+				System.out.println(e);
+			}
 			GlobalVars.START_TIME = null;
 			recordingStatus = false;
 		}
@@ -162,7 +170,7 @@ public class DataLogger
 //			long nanoStart = System.nanoTime();
 			debugPrint("SYNC message received");
 
-			if (GlobalVars.START_TIME == null)
+			if(GlobalVars.START_TIME == null)
 			{
 				GlobalVars.START_TIME = System.nanoTime();
 				String header = dfmt.produceHeader(nodes);
@@ -178,7 +186,7 @@ public class DataLogger
 			}
 			else
 			{
-				long elapsedTime = System.nanoTime()-GlobalVars.START_TIME;
+				elapsedTimeNs = System.nanoTime()-GlobalVars.START_TIME;
 
 				AccelerometerReading readings[] = new AccelerometerReading[nodes.size()];
 				for(int i=0; i<nodes.size(); i++ )
@@ -186,7 +194,7 @@ public class DataLogger
 					readings[i] = nodes.get(i).getLatestReading();
 				}
 //				long nanoFmtStart = System.nanoTime();
-				String formattedLine = dfmt.produceOutputLine(elapsedTime, readings);
+				String formattedLine = dfmt.produceOutputLine(elapsedTimeNs, readings);
 //				long nanoDone = System.nanoTime();
 				if(toStdout)
 				{
@@ -199,15 +207,23 @@ public class DataLogger
 				else
 				{
 					//debugPrint(dfmt.producePrettyOutputString(readings));
-					if((fileHandler.currentSampleSize <  fileLength)||infiniteDataFile)
+					if((fileHandler.currentSampleSize <  fileLength) || infiniteDataFile)
 					{
 						fileHandler.printSample(formattedLine);
 						debugPrint(formattedLine);
 					}
 					else
 					{
+						try
+						{
+							fileHandler.close(elapsedTimeNs);
+						}
+						catch(Exception e)
+						{
+							System.out.println(e);
+							stopSyncListener();
+						}
 						GlobalVars.START_TIME = null;
-						fileHandler.close();
 					}
 				}
 			}
@@ -292,7 +308,7 @@ public class DataLogger
 			else
 			{
 				if(output != null)
-					close();
+					close(0);
 				try
 				{
 					currentFileName = baseName+String.format("%03d", currentFileNumber)+".csv";
@@ -308,11 +324,11 @@ public class DataLogger
 		}
 
 		//Closes file and makes comment at end of file
-		public void close()
+		public void close(long elapsedTime)
 		{
 			if(output!=null)
 			{
-				makeEOFComment();
+				makeEOFComment(elapsedTime);
 				output.close();
 			}
 			output = null;
@@ -327,7 +343,7 @@ public class DataLogger
 		    if(output == null)
 				createFile();
 		    output.println(line);
-		    output.flush();
+//		    output.flush();
 		}
 
 		/**
@@ -346,61 +362,14 @@ public class DataLogger
 		// and the average sample rate across the file
 		//Does not rely on currentSampleSize to be correct
 		//This could probably be changed to show more faith in the instance
-		// variables but its works fine like it is.
-		public void makeEOFComment()
+		// variables but  its works fine like it is.
+		public void makeEOFComment(long elapsedTimeNs)
 		{
-			Double firstSampleTime = new Double(0);
-			Double lastSampleTime = new Double(0);
-			int sampleNumber = 0;
-			if(currentFileName != null)
-			{
-				try
-				{
-					LineNumberReader lnr = new LineNumberReader(new FileReader(new File(directory+"/"+currentFileName)));
-					boolean flushedHeader = false;
-					int headerCount = 0;
-					while(!flushedHeader)
-					{
-						String firstSampleTimeString = lnr.readLine();
-						if(firstSampleTimeString.charAt(0) != (char)';')
-						{
-							firstSampleTime = Double.parseDouble(firstSampleTimeString.split(",")[0]);
-							flushedHeader = true;
-						}
-						else
-						{
-							headerCount++;
-						}
-					}
-
-					String lastLine = new String();
-					do
-					{
-						String newLine = lnr.readLine();
-						if(newLine == null)
-							break;
-						else
-							lastLine = newLine;
-					}while(lastLine != null);
-
-					if(lastLine.startsWith(";"))
-						return;	//This means the comment was already generated
-
-					lastSampleTime = Double.parseDouble(lastLine.split(",")[0]);
-					lnr.skip(Long.MAX_VALUE);//go to the end of the file
-					sampleNumber = lnr.getLineNumber()-headerCount;
-					lnr.close();
-				}
-				catch(IOException ioe)
-				{
-					ioe.printStackTrace();
-					return;
-				}
-
-				double deltaTimeSeconds = (lastSampleTime - firstSampleTime);
-				double sampleRate = ((double)sampleNumber/deltaTimeSeconds);
-				printLine(String.format(";%d samples at %.3fHz", sampleNumber, sampleRate));
-			}
+			double dt = (double)elapsedTimeNs;
+			int sampleNumber = currentSampleSize;
+			double deltaTimeSeconds = dt/1e9;
+			double sampleRate = ((double)sampleNumber/deltaTimeSeconds);
+			printLine(String.format(";%d samples at %.3fHz", sampleNumber, sampleRate));
 		}
 	}
 
